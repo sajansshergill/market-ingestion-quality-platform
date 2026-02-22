@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: hedge_postgres
+    environment:
+      POSTGRES_DB: warehouse
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5440:5432"   # 5440 on host to avoid conflict with local Postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
