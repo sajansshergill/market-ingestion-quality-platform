@@ -101,36 +101,60 @@ ALPHA_VANTAGE_API_KEY=...
 FRED_API_KEY=...
 ```
 2) Start services
-docker compose up -d
-Expected services (depending on your compose file):
+```bash
+docker compose up -d postgres
+# Or with Airflow: docker compose up -d  (requires FRED_API_KEY in env or .env)
+```
+
+Expected: Postgres on port 5440 (avoids conflict with local Postgres).
 - Postgres
 - Kafka (+ Zookeeper or KRaft)
 - Airflow webserver/scheduler
 - Grafana (+ Prometheus)
 
 3) Initialize Database
-docker compose exec postgres psql -U postgres -d warehouse -f /sql/00_create_schemas.sql
-docker compose exec postgres psql -U postgres -d warehouse -f /sql/01_bronze_tables.sql
-docker compose exec postgres psql -U postgres -d warehouse -f /sql/02_silver_tables.sql
-docker compose exec postgres psql -U postgres -d warehouse -f /sql/03_gold_star_schema.sql
-docker compose exec postgres psql -U postgres -d warehouse -f /sql/04_indexes.sql
+```bash
+# Run all SQL migrations (or use scripts/init_db.sh)
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/00_create_schemas.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/01_bronze_tables.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/02_ops_tables.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/03_bronze_vendor2.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/03_bronze_ohlcv.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/03_bronze_attention.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/04_silver_tables.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/05_gold_star_schema.sql
+docker exec -i hedge_postgres psql -U postgres -d warehouse < sql/06_indexes.sql
+```
+
+Set `PGPORT=5440` in `.env` (Postgres binds to 5440 to avoid conflicts with local Postgres).
 
 4) Run pipelines
-Option A — Airflow:
-- Open Airflow UI at http://localhost:8080
-- Trigger DAGs in this order:
-  1. daily_market_ingest
-  2. intraday_quotes_ingest
-  3. transform_to_silver
-  4. build_gold_marts
-  5. dq_and_reconciliation
 
-Option B — CLI scripts (for dev):
-python -m src.ingest.vendor_fred
+**Option A — One-command (recommended):**
+```bash
+pip install -r requirements.txt
+./scripts/run_full_pipeline.sh
+```
+Runs init DB (if needed), ingest, transform, DQ, reconciliation.
+
+**Option B — Airflow:**
+```bash
+docker compose --env-file .env up -d   # Pass FRED_API_KEY to Airflow
+```
+- Open Airflow UI at http://localhost:8080 (login: admin/admin)
+- Trigger DAG `market_macro_pipeline` (ingest → transform → DQ → reconcile)
+
+**Option C — CLI scripts (step by step):**
+```bash
+python -m src.ingest.vendor_fred           # Macro (FRED)
+python -m src.ingest.vendor_fred_simulated # Simulated vendor2
+python -m src.ingest.vendor_ohlcv_mock     # Mock OHLCV
+python -m src.ingest.vendor_attention_mock # Mock attention
 python -m src.transform.bronze_to_silver
 python -m src.transform.silver_to_gold
 python -m src.quality.run_checks
 python -m src.quality.reconciliation
+```
 
 5) Monitoring
 - Grafana: http://localhost:3000

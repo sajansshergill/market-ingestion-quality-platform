@@ -1,0 +1,4 @@
+# Extra deps for Airflow tasks (compatible with Airflow 2.9's sqlalchemy<2.0)
+psycopg[binary]>=3.1.0
+pandas>=2.0
+python-dotenv>=1.0
